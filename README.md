@@ -68,6 +68,24 @@ cd android
 
 Install the APK, open the app, enter your Connect Plus mobile number, and type the OTP you receive by SMS.
 
+### Alternate login (optional)
+
+If the standard login keeps failing, tap **Use alternate login** on the login screen. The standard login stays the default.
+
+"Alternate login" is OpenVW's own label, not a Volkswagen product name. It still uses your mobile number and an SMS code, but skips the `savwconnect.com` account service and signs in straight to the Cerence telematics service, the one OpenVW already reads car data from.
+
+| Step | Standard login | Alternate login |
+|---|---|---|
+| Send the code | `savwconnect` `registerUser` | Cerence `POST /api/identity/v1/auth/users/end-user/otp` |
+| Check the code | `savwconnect` `verifyLoginOTP` | Cerence `POST /api/identity/v1/auth/users/end-user/login` |
+| Get the car | `savwconnect` user profile | Cerence `GET /api/inventory/v1/cars/user-mapped` |
+| Telematics token | `CerenceToken`, then `end-user/token` | Comes with the login; renewed with `POST /api/identity/v1/auth/users/refresh/token` |
+
+- **Not available on this route:** address and engine number, because only the `savwconnect` profile has them.
+- **Not official:** Volkswagen does not publish these endpoints, so they can change without notice.
+- **Rate limits:** this route is not a way around them, and it is not known whether the same limits apply to it.
+- **Source:** the endpoints were described for MySkoda Connected in [darushah/openskoda PR #3](https://github.com/darushah/openskoda/pull/3).
+
 `client/` holds a small Node.js reference implementation of the same API (a local bridge + CLI) used while reverse-engineering; the Android app is standalone and does **not** need it.
 
 ## How it works / security notes

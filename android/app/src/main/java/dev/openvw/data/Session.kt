@@ -39,9 +39,24 @@ class Session(context: Context) {
   var dark: Boolean get() = sp.getBoolean("dark", false); set(v) = sp.edit().putBoolean("dark", v).apply()
   var privacy: Boolean get() = sp.getBoolean("privacy", false); set(v) = sp.edit().putBoolean("privacy", v).apply()
 
-  val loggedIn: Boolean get() = verified && installationID != 0 && loginId != 0
+  // Alternate login (optional route): Cerence tokens only, no savwconnect ids
+  var alternateLogin: Boolean get() = sp.getBoolean("alternateLogin", false); set(v) = sp.edit().putBoolean("alternateLogin", v).apply()
+  var teleLast: String get() = s("teleLast"); set(v) = put("teleLast", v) // kept after a 401 clears teleToken: refresh needs it
+  var teleRefreshToken: String get() = s("teleRefreshToken"); set(v) = put("teleRefreshToken", v)
+  var ownerName: String get() = s("ownerName"); set(v) = put("ownerName", v)
+  var ownerEmail: String get() = s("ownerEmail"); set(v) = put("ownerEmail", v)
+
+  val loggedIn: Boolean get() = isLoggedIn(verified, alternateLogin, installationID, loginId)
 
   fun clearAuth() {
     verified = false; token = ""; crmToken = ""; teleToken = ""; cerenceToken = ""
+    if (alternateLogin) {
+      vin = ""; carId = ""; teleLast = ""; teleRefreshToken = ""; ownerName = ""; ownerEmail = ""
+      alternateLogin = false
+    }
   }
 }
+
+/** An alternate login has no savwconnect ids. Sessions from the standard login keep their old rule. */
+internal fun isLoggedIn(verified: Boolean, alternate: Boolean, installationID: Int, loginId: Int): Boolean =
+  verified && (alternate || (installationID != 0 && loginId != 0))

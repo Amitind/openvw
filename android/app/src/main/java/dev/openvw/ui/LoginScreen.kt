@@ -74,6 +74,7 @@ fun LoginScreen(vm: AppViewModel) {
 @Composable
 private fun PhoneStep(vm: AppViewModel) {
   var p by remember { mutableStateOf(vm.phone) }
+  var alternate by remember { mutableStateOf(false) }
   Text("MOBILE NUMBER", style = label())
   Spacer(Modifier.height(8.dp))
   Row(
@@ -93,7 +94,18 @@ private fun PhoneStep(vm: AppViewModel) {
     )
   }
   Spacer(Modifier.height(20.dp))
-  CtaButton(if (vm.busy) "Sending OTP…" else "Send OTP", enabled = !vm.busy && p.length == 10) { vm.startLogin(p) }
+  CtaButton(if (vm.busy) "Sending OTP…" else "Send OTP", enabled = !vm.busy && p.length == 10) { if (alternate) vm.startAlternateLogin(p) else vm.startLogin(p) }
+  Spacer(Modifier.height(8.dp))
+  if (alternate) {
+    Text(
+      "Alternate login: SMS code through the Cerence telematics service. Address and engine number are not available.",
+      style = TextStyle(color = Muted, fontSize = 13.sp, lineHeight = 18.sp, textAlign = TextAlign.Center),
+      modifier = Modifier.fillMaxWidth(),
+    )
+  }
+  Box(Modifier.fillMaxWidth().clickable { alternate = !alternate }.padding(12.dp), contentAlignment = Alignment.Center) {
+    Text(if (alternate) "Use standard login" else "Use alternate login", style = TextStyle(color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold))
+  }
 }
 
 @Composable

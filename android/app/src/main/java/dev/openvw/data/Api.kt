@@ -115,6 +115,33 @@ object Api {
     json(text).put("_status", code)
   }
 
+  // ---------- alternate login: Cerence only, no savwconnect call ----------
+  suspend fun cerenceSendOtp(mobile: String): JSONObject = withContext(Dispatchers.IO) {
+    val body = JSONObject().put("countryCode", "+91").put("phoneNumber", mobile).toString()
+    val (code, text) = req("POST", "$CERENCE/api/identity/v1/auth/users/end-user/otp", body, null)
+    json(text).put("_status", code)
+  }
+
+  suspend fun cerenceLogin(sessionId: String, mobile: String, otp: String): JSONObject = withContext(Dispatchers.IO) {
+    val body = JSONObject().put("username", mobile).put("password", otp).put("loginType", 0).put("sessionId", sessionId).toString()
+    val (code, text) = req("POST", "$CERENCE/api/identity/v1/auth/users/end-user/login", body, null)
+    json(text).put("_status", code)
+  }
+
+  /** Needs both tokens (refresh alone gets a 400). The server replaces both, so save the new pair at once. */
+  suspend fun cerenceRefresh(access: String, refresh: String): JSONObject = withContext(Dispatchers.IO) {
+    val body = JSONObject().put("accessToken", access).put("refreshToken", refresh).toString()
+    val (code, text) = req("POST", "$CERENCE/api/identity/v1/auth/users/refresh/token", body, "Bearer $access")
+    json(text).put("_status", code)
+  }
+
+  /** Cars on this account. The server sends a bare array; it comes back here as {cars: [...]}. */
+  suspend fun userCars(teleToken: String): JSONObject = withContext(Dispatchers.IO) {
+    val (code, text) = req("GET", "$CERENCE/api/inventory/v1/cars/user-mapped", null, "Bearer $teleToken")
+    val cars = runCatching { JSONArray(text) }.getOrNull()
+    (if (cars != null) JSONObject().put("cars", cars) else json(text)).put("_status", code)
+  }
+
   suspend fun resolveCar(vin: String, teleToken: String): JSONObject = withContext(Dispatchers.IO) {
     val (code, text) = req("GET", "$CERENCE/api/v1/car?vin=$vin", null, "Bearer $teleToken")
     json(text).put("_status", code)

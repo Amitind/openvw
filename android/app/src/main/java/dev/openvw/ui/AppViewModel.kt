@@ -62,6 +62,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
   private var lastGeo: Pair<Double, Double>? = null
   private var pollQueued = false
   private var searchJob: Job? = null
+  private var otpSessionId = "" // alternate login: pairs the texted code with its request
+  private var carLoaded = false // alternate login: car details are read once per app start
 
   init {
     phone = session.mobile
@@ -92,6 +94,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     busy = true; message = null
     viewModelScope.launch {
       try {
+        session.alternateLogin = false
         session.mobile = mob
         val inst = Api.appInstallation(session.deviceID)
         session.installationID = inst.optInt("installationID", session.installationID)
@@ -108,11 +111,104 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
   }
 
+  /** Alternate login: SMS sign-in against Cerence only, without the savwconnect calls. See README. */
+  fun startAlternateLogin(p: String) {
+    val mob = p.filter { it.isDigit() }
+    if (mob.length != 10) { message = "Enter a 10-digit mobile number"; return }
+    busy = true; message = null
+    viewModelScope.launch {
+      try {
+        session.alternateLogin = true
+        session.mobile = mob
+        if (sendAlternateOtp()) { busy = false; phase = Phase.OTP }
+      } catch (e: Exception) { fail(e.message ?: "Network error") }
+    }
+  }
+
+  /** Asks Cerence to text a code and keeps the session id the login needs. On false, [message] has the reason. */
+  private suspend fun sendAlternateOtp(): Boolean {
+    val r = Api.cerenceSendOtp(session.mobile)
+    otpSessionId = r.optString("sessionId")
+    if (otpSessionId.isEmpty()) { fail(alternateError(r, "Could not send OTP")); return false }
+    return true
+  }
+
+  private fun alternateError(r: JSONObject, fallback: String): String =
+    if (r.optInt("_status") == 429) "Too many attempts. Try again later." else r.optString("message").ifEmpty { fallback }
+
+  private suspend fun verifyAlternate(code: String) {
+    val r = Api.cerenceLogin(otpSessionId, session.mobile, code)
+    val ti = r.optJSONObject("loginInfo")?.optJSONObject("tokenInfo")
+    val access = ti?.optString("accessToken").orEmpty()
+    val refresh = ti?.optString("refreshToken").orEmpty()
+    if (access.isEmpty() || refresh.isEmpty()) { fail(alternateError(r, "Incorrect code")); return }
+    session.vin = ""; session.carId = "" // an earlier sign-in's car must not carry over to this account
+    carLoaded = false
+    saveAlternateTokens(access, refresh)
+    session.telePhone = "+91" + session.mobile
+    r.optJSONObject("userInfo")?.let { u ->
+      fun f(k: String) = u.optString(k).takeIf { it != "null" }.orEmpty()
+      session.ownerName = listOf(f("firstName"), f("lastName")).filter { it.isNotEmpty() }.joinToString(" ").ifEmpty { f("nickname") }
+      session.ownerEmail = f("email")
+      f("createDate").takeIf { it.isNotEmpty() }?.let { session.connectedSince = it; Store.connectedSince = it }
+    }
+    session.verified = true
+    busy = false; phase = Phase.LOADING
+    loadData()
+    if (session.vin.isEmpty()) { logout(); fail("Could not load a car for this account. Try again."); return }
+    phase = Phase.READY; poll()
+  }
+
+  private fun saveAlternateTokens(access: String, refresh: String) {
+    session.teleToken = access; session.teleLast = access; session.teleRefreshToken = refresh
+  }
+
+  /** Alternate login: a live access token, plus the VIN that every later car call needs. */
+  private suspend fun prepareAlternate() {
+    if (session.teleToken.isEmpty()) {
+      val r = Api.cerenceRefresh(session.teleLast, session.teleRefreshToken)
+      val access = r.optString("access_token")
+      val refresh = r.optString("refresh_token")
+      if (access.isEmpty() || refresh.isEmpty()) {
+        val status = r.optInt("_status")
+        if (status == 400 || status == 401) { logout(); message = "Your Volkswagen sign-in expired. Sign in again." }
+        return // anything else (no network, 5xx): keep the tokens and retry on the next poll
+      }
+      saveAlternateTokens(access, refresh)
+    }
+    if (!carLoaded) loadAlternateCar()
+  }
+
+  private suspend fun loadAlternateCar() {
+    val r = Api.userCars(session.teleToken)
+    if (r.optInt("_status") == 401) { session.teleToken = ""; return }
+    // ponytail: first car only, same as the standard login; add a picker when an account with two cars shows up
+    val car = r.optJSONArray("cars")?.optJSONObject(0) ?: return
+    val vin = car.optString("vin")
+    if (vin.isEmpty()) return
+    fun f(k: String) = car.optString(k).takeIf { it != "null" }.orEmpty()
+    session.vin = vin
+    Store.vehicle = Store.vehicle.copy(
+      variant = f("variant").ifEmpty { Store.vehicle.variant },
+      model = f("model").ifEmpty { Store.vehicle.model },
+      vehicleName = "Factory:$vin",
+      engineType = "--", // only the savwconnect profile has the engine number
+      dongleImei = f("imei").ifEmpty { Store.vehicle.dongleImei },
+      dongleFirmware = f("firmware").ifEmpty { Store.vehicle.dongleFirmware },
+    )
+    carLoaded = true
+  }
+
   /** Back from the OTP step to the phone-number step. */
   fun backToPhone() { busy = false; message = null; phase = Phase.LOGIN }
 
   fun resend() {
     viewModelScope.launch {
+      if (session.alternateLogin) {
+        val sent = runCatching { sendAlternateOtp() }.getOrDefault(false)
+        message = if (sent) "Code re-sent" else message ?: "Could not resend code"
+        return@launch
+      }
       runCatching { Api.registerUser(session.mobile, session.installationID, session.token) }
       message = "Code re-sent"
     }
@@ -124,6 +220,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     busy = true; message = null
     viewModelScope.launch {
       try {
+        if (session.alternateLogin) { verifyAlternate(code); return@launch }
         val r = Api.verifyLoginOTP(code, session)
         if (!r.optBoolean("isSuccessful")) { fail(r.optString("message", "Incorrect code")); return@launch }
         session.verified = true
@@ -137,7 +234,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
   fun refresh() {
     viewModelScope.launch {
       try { loadData() } catch (_: Exception) {}
-      phase = Phase.READY
+      phase = if (session.loggedIn) Phase.READY else Phase.LOGIN // an expired alternate login signs out during the load
       poll()
     }
   }
@@ -202,11 +299,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
   }
 
-  fun logout() { onBackground(); session.clearAuth(); Store.live = false; phase = Phase.LOGIN }
+  fun logout() { onBackground(); session.clearAuth(); carLoaded = false; Store.live = false; phase = Phase.LOGIN }
 
   private fun fail(m: String) { busy = false; message = m; if (phase == Phase.LOADING) phase = if (session.verified) Phase.READY else Phase.LOGIN }
 
   private suspend fun loadData() {
+    if (session.alternateLogin) {
+      Store.owner = Owner(name = session.ownerName.ifEmpty { Repo.owner.name }, email = session.ownerEmail, mobile = session.telePhone, address = "")
+      runCatching { loadLock.withLock { loadTelematics(full = false) } }
+      return
+    }
     // fresh bootstrap token (30-min TTL)
     val auth = Api.authenticate(session.installationID, 0)
     if (auth.optString("accessToken").isNotEmpty()) {
@@ -289,13 +391,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
   }
 
   private suspend fun loadTelematics(full: Boolean) {
+    val alternate = session.alternateLogin
+    if (alternate) prepareAlternate()
     if (session.vin.isEmpty()) return
-    if (session.cerenceToken.isEmpty()) {
+    if (!alternate && session.cerenceToken.isEmpty()) {
       val ct = Api.cerenceToken(session.userId)
       session.cerenceToken = ct.optString("cerenceToken").ifEmpty { ct.optString("CerenceToken") }
     }
-    if (session.cerenceToken.isEmpty()) return
-    if (session.teleToken.isEmpty()) {
+    if (!alternate && session.cerenceToken.isEmpty()) return
+    if (!alternate && session.teleToken.isEmpty()) {
       val phone = session.telePhone.ifEmpty { "+91" + session.mobile }
       val tt = Api.telematicsToken(session.cerenceToken, phone, session.vin)
       val tok = tt.optJSONObject("loginInfo")?.optJSONObject("tokenInfo")?.optString("accessToken")
