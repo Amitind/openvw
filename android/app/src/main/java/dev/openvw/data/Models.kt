@@ -2,18 +2,19 @@ package dev.openvw.data
 
 // --- Data shapes (mirror the live My Volkswagen / OpenVW API fields) ---
 
+// No sample readings here: these defaults show on screen until (or unless) live data arrives.
 data class Telemetry(
-  val speedKmh: Int? = 0,
-  val rpm: Int? = 950,
-  val fuelPct: Int = 34,
-  val batteryV: Double = 12.4,
-  val coolantC: Int? = 98,
-  val intakeC: Int? = 50,
-  val engineLoadPct: Int? = 27,
-  val odometerKm: Int? = 10229,
+  val speedKmh: Int? = null,
+  val rpm: Int? = null,
+  val fuelPct: Int = 0,
+  val batteryV: Double = 0.0,
+  val coolantC: Int? = null,
+  val intakeC: Int? = null,
+  val engineLoadPct: Int? = null,
+  val odometerKm: Int? = null,
   val milOn: Boolean = false,          // check-engine light
-  val distanceWithMil: Int? = 0,       // km driven with MIL on
-  val distanceSinceDtc: Int? = 6145,   // km since last diagnostic reset
+  val distanceWithMil: Int? = null,    // km driven with MIL on
+  val distanceSinceDtc: Int? = null,   // km since last diagnostic reset
   val engineOn: Boolean = false,
 )
 

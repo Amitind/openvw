@@ -41,7 +41,13 @@ class Session(context: Context) {
 
   val loggedIn: Boolean get() = verified && installationID != 0 && loginId != 0
 
-  fun clearAuth() {
-    verified = false; token = ""; crmToken = ""; teleToken = ""; cerenceToken = ""
+  /** Forget everything tied to the signed-in account. Device id and app settings stay. */
+  fun clearAccount() {
+    val e = sp.edit()
+    listOf(
+      "verified", "token", "refreshToken", "signStamp", "loginId", "userId", "crmToken",
+      "vin", "carId", "cerenceToken", "teleToken", "telePhone", "connectedSince", "paintPick",
+    ).forEach { e.remove(it) }
+    e.apply()
   }
 }

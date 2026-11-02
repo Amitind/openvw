@@ -30,6 +30,18 @@ object Store {
   var fuelPrice by mutableStateOf(0.0)        // ₹/L entered by the owner; 0 = default (Bengaluru)
   var dark by mutableStateOf(false)           // dark mode (mirrors theme.Palette.dark)
 
+  /** Drop all data of the signed-in account. Privacy, fuel price and theme are app settings and stay. */
+  fun reset() {
+    vehicle = Repo.vehicle; telemetry = Repo.telemetry; owner = Repo.owner
+    trips = emptyList(); events = emptyList()
+    live = false; liveConnected = false
+    connectedSince = "2024-11-22T12:58:04Z"
+    dongle = Dongle(); drive = DriveStats(); parked = Parked()
+    pendingDrive = null; detailTrip = null
+    tripRange = null; tripResults = emptyList(); tripSearching = false; tripSearchError = null
+    alertSetup = AlertSetup(); paintPick = ""
+  }
+
   val workshops get() = Repo.workshops
 
   val specs: List<Spec>

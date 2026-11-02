@@ -29,6 +29,7 @@ import dev.openvw.data.WidgetSnapshot
 import dev.openvw.widget.OpenVWWidgets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -90,6 +91,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val mob = p.filter { it.isDigit() }
     if (mob.length != 10) { message = "Enter a 10-digit mobile number"; return }
     busy = true; message = null
+    clearAccount() // also covers leftovers from older builds, whose logout kept the VIN and car id
     viewModelScope.launch {
       try {
         session.mobile = mob
@@ -202,7 +204,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
   }
 
-  fun logout() { onBackground(); session.clearAuth(); Store.live = false; phase = Phase.LOGIN }
+  fun logout() {
+    viewModelScope.coroutineContext.cancelChildren() // an in-flight load must not write the old account back
+    onBackground()
+    clearAccount()
+    phase = Phase.LOGIN
+  }
+
+  /** Remove the previous account from prefs, memory and widgets, so the next login can't inherit it. */
+  private fun clearAccount() {
+    session.clearAccount()
+    Store.reset()
+    lastFull = 0L; lastGeo = null
+    WidgetData.clear(getApplication())
+    OpenVWWidgets.updateAll(getApplication())
+  }
 
   private fun fail(m: String) { busy = false; message = m; if (phase == Phase.LOADING) phase = if (session.verified) Phase.READY else Phase.LOGIN }
 

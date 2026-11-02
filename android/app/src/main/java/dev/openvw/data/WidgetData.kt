@@ -4,16 +4,16 @@ import android.content.Context
 
 /** Snapshot the home-screen widgets read (written by the app after each data load). */
 data class WidgetSnapshot(
-  val fuelPct: Int = 34,
-  val batteryV: Double = 12.4,
+  val fuelPct: Int = 0,
+  val batteryV: Double = 0.0,
   val status: String = "Parked",
   val variant: String = "Taigun GT Plus",
-  val tripMin: Int = 14,
-  val tripDate: String = "16 Oct",
-  val tripStart: String = "10:10 AM",
-  val tripEnd: String = "10:24 AM",
-  val tripFrom: String = "MG Road",
-  val tripTo: String = "Indiranagar",
+  val tripMin: Int = 0,
+  val tripDate: String = "",
+  val tripStart: String = "",
+  val tripEnd: String = "",
+  val tripFrom: String = "",
+  val tripTo: String = "",
   val tripType: String = "Personal",
   val tripKm: Double = 0.0,
   val tripScore: Int = 0,
@@ -22,7 +22,7 @@ data class WidgetSnapshot(
   val parkEpoch: Long = 0,
   val parkLat: Double = 12.9756,
   val parkLon: Double = 77.6050,
-  val odometerKm: Int = 10229,
+  val odometerKm: Int = 0,
   val rangeKm: Int = 0,
   val coolantC: Int = 0,
   val milOn: Boolean = false,
@@ -32,6 +32,12 @@ data class WidgetSnapshot(
 
 object WidgetData {
   private fun prefs(ctx: Context) = ctx.getSharedPreferences("openvw_widget", Context.MODE_PRIVATE)
+
+  /** Logout: widgets must not keep showing the previous account's car and location. */
+  fun clear(ctx: Context) {
+    prefs(ctx).edit().clear().apply()
+    MapSnapshot.file(ctx).delete()
+  }
 
   fun save(ctx: Context, s: WidgetSnapshot) {
     prefs(ctx).edit()

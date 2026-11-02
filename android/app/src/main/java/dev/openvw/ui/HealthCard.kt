@@ -36,6 +36,7 @@ import dev.openvw.theme.RedSoftBg
 fun HealthCard(t: Telemetry, modifier: Modifier = Modifier) {
   val ok = !t.milOn
   val battLabel = when {
+    t.batteryV <= 0.0 -> "No data" to Ink // no reading yet, not a weak battery
     t.batteryV >= 12.4 -> "Good" to GreenDark
     t.batteryV >= 12.0 -> "Fair" to dev.openvw.theme.Amber
     else -> "Weak" to Red
